@@ -33,6 +33,30 @@
 			border: 1px solid #45434e;
 			box-shadow: 0 0 1px 1px #2f2d35;
 		}
+		
+		.video-background {
+		background: #000;
+		position: fixed;
+		top: 0; right: 0; bottom: 0; left: 0;
+		z-index: -99;
+		}
+		.video-foreground,
+		.video-background iframe {
+			position: absolute;
+			top: 0; left: 0;
+			width: 100%; height: 100%;
+			pointer-events: none;
+		}
+		#vidtop-content {
+			top: 0;
+		}
+		
+		@media (min-aspect-ratio: 16/9) {
+			.video-foreground { height: 300%; top: -100%; }
+		}
+		@media (max-aspect-ratio: 16/9) {
+			.video-foreground { width: 300%; left: -100%; }
+		}
 
 
 		/* Status display
@@ -116,132 +140,142 @@
 
 </head>
 <body>
-	<canvas id='canvas'>
+	<div class="video-background">
+		<div class="video-foreground">
+			<iframe src="https://www.youtube.com/embed/JQnxefImhu8?
+	controls=0&showinfo=0&rel=0&autoplay=1&loop=1&mute=1
+	" allowfullscreen></iframe>
+		</div>
+	</div>
+	<div id="vidtop-content">
+		<canvas id='canvas'>
 		HTML5 canvas appears to be unsupported in the current browser.<br />
 		Please try updating or use a different browser.
-	</canvas>
-	<div id='status'>
-		<div id='status-progress' style='display: none;' oncontextmenu='event.preventDefault();'><div id ='status-progress-inner'></div></div>
-		<div id='status-indeterminate' style='display: none;' oncontextmenu='event.preventDefault();'>
-			<div></div>
-			<div></div>
-			<div></div>
-			<div></div>
-			<div></div>
-			<div></div>
-			<div></div>
-			<div></div>
+		</canvas>
+		<div id='status'>
+			<div id='status-progress' style='display: none;' oncontextmenu='event.preventDefault();'><div id ='status-progress-inner'></div></div>
+			<div id='status-indeterminate' style='display: none;' oncontextmenu='event.preventDefault();'>
+				<div></div>
+				<div></div>
+				<div></div>
+				<div></div>
+				<div></div>
+				<div></div>
+				<div></div>
+				<div></div>
+			</div>
+			<div id='status-notice' class='godot' style='display: none;'></div>
 		</div>
-		<div id='status-notice' class='godot' style='display: none;'></div>
+
+		<script type='text/javascript' src='Rigged.js'></script>
+		<script type='text/javascript'>//<![CDATA[
+
+			const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"executable":"Rigged","experimentalVK":false,"fileSizes":{"Rigged.pck":15830224,"Rigged.wasm":17493574},"focusCanvas":true,"gdnativeLibs":[]};
+			var engine = new Engine(GODOT_CONFIG);
+
+			(function() {
+				const INDETERMINATE_STATUS_STEP_MS = 100;
+				var statusProgress = document.getElementById('status-progress');
+				var statusProgressInner = document.getElementById('status-progress-inner');
+				var statusIndeterminate = document.getElementById('status-indeterminate');
+				var statusNotice = document.getElementById('status-notice');
+
+				var initializing = true;
+				var statusMode = 'hidden';
+
+				var animationCallbacks = [];
+				function animate(time) {
+					animationCallbacks.forEach(callback => callback(time));
+					requestAnimationFrame(animate);
+				}
+				requestAnimationFrame(animate);
+
+				function setStatusMode(mode) {
+
+					if (statusMode === mode || !initializing)
+						return;
+					[statusProgress, statusIndeterminate, statusNotice].forEach(elem => {
+						elem.style.display = 'none';
+					});
+					animationCallbacks = animationCallbacks.filter(function(value) {
+						return (value != animateStatusIndeterminate);
+					});
+					switch (mode) {
+						case 'progress':
+							statusProgress.style.display = 'block';
+							break;
+						case 'indeterminate':
+							statusIndeterminate.style.display = 'block';
+							animationCallbacks.push(animateStatusIndeterminate);
+							break;
+						case 'notice':
+							statusNotice.style.display = 'block';
+							break;
+						case 'hidden':
+							break;
+						default:
+							throw new Error('Invalid status mode');
+					}
+					statusMode = mode;
+				}
+
+				function animateStatusIndeterminate(ms) {
+					var i = Math.floor(ms / INDETERMINATE_STATUS_STEP_MS % 8);
+					if (statusIndeterminate.children[i].style.borderTopColor == '') {
+						Array.prototype.slice.call(statusIndeterminate.children).forEach(child => {
+							child.style.borderTopColor = '';
+						});
+						statusIndeterminate.children[i].style.borderTopColor = '#dfdfdf';
+					}
+				}
+
+				function setStatusNotice(text) {
+					while (statusNotice.lastChild) {
+						statusNotice.removeChild(statusNotice.lastChild);
+					}
+					var lines = text.split('\n');
+					lines.forEach((line) => {
+						statusNotice.appendChild(document.createTextNode(line));
+						statusNotice.appendChild(document.createElement('br'));
+					});
+				};
+
+				function displayFailureNotice(err) {
+					var msg = err.message || err;
+					console.error(msg);
+					setStatusNotice(msg);
+					setStatusMode('notice');
+					initializing = false;
+				};
+
+				if (!Engine.isWebGLAvailable()) {
+					displayFailureNotice('WebGL not available');
+				} else {
+					setStatusMode('indeterminate');
+					engine.startGame({
+						'onProgress': function (current, total) {
+							if (total > 0) {
+								statusProgressInner.style.width = current/total * 100 + '%';
+								setStatusMode('progress');
+								if (current === total) {
+									// wait for progress bar animation
+									setTimeout(() => {
+										setStatusMode('indeterminate');
+									}, 500);
+								}
+							} else {
+								setStatusMode('indeterminate');
+							}
+						},
+					}).then(() => {
+						setStatusMode('hidden');
+						initializing = false;
+					}, displayFailureNotice);
+				}
+			})();
+		//]]></script>
 	</div>
 
-	<script type='text/javascript' src='Rigged.js'></script>
-	<script type='text/javascript'>//<![CDATA[
-
-		const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"executable":"Rigged","experimentalVK":false,"fileSizes":{"Rigged.pck":15830224,"Rigged.wasm":17493574},"focusCanvas":true,"gdnativeLibs":[]};
-		var engine = new Engine(GODOT_CONFIG);
-
-		(function() {
-			const INDETERMINATE_STATUS_STEP_MS = 100;
-			var statusProgress = document.getElementById('status-progress');
-			var statusProgressInner = document.getElementById('status-progress-inner');
-			var statusIndeterminate = document.getElementById('status-indeterminate');
-			var statusNotice = document.getElementById('status-notice');
-
-			var initializing = true;
-			var statusMode = 'hidden';
-
-			var animationCallbacks = [];
-			function animate(time) {
-				animationCallbacks.forEach(callback => callback(time));
-				requestAnimationFrame(animate);
-			}
-			requestAnimationFrame(animate);
-
-			function setStatusMode(mode) {
-
-				if (statusMode === mode || !initializing)
-					return;
-				[statusProgress, statusIndeterminate, statusNotice].forEach(elem => {
-					elem.style.display = 'none';
-				});
-				animationCallbacks = animationCallbacks.filter(function(value) {
-					return (value != animateStatusIndeterminate);
-				});
-				switch (mode) {
-					case 'progress':
-						statusProgress.style.display = 'block';
-						break;
-					case 'indeterminate':
-						statusIndeterminate.style.display = 'block';
-						animationCallbacks.push(animateStatusIndeterminate);
-						break;
-					case 'notice':
-						statusNotice.style.display = 'block';
-						break;
-					case 'hidden':
-						break;
-					default:
-						throw new Error('Invalid status mode');
-				}
-				statusMode = mode;
-			}
-
-			function animateStatusIndeterminate(ms) {
-				var i = Math.floor(ms / INDETERMINATE_STATUS_STEP_MS % 8);
-				if (statusIndeterminate.children[i].style.borderTopColor == '') {
-					Array.prototype.slice.call(statusIndeterminate.children).forEach(child => {
-						child.style.borderTopColor = '';
-					});
-					statusIndeterminate.children[i].style.borderTopColor = '#dfdfdf';
-				}
-			}
-
-			function setStatusNotice(text) {
-				while (statusNotice.lastChild) {
-					statusNotice.removeChild(statusNotice.lastChild);
-				}
-				var lines = text.split('\n');
-				lines.forEach((line) => {
-					statusNotice.appendChild(document.createTextNode(line));
-					statusNotice.appendChild(document.createElement('br'));
-				});
-			};
-
-			function displayFailureNotice(err) {
-				var msg = err.message || err;
-				console.error(msg);
-				setStatusNotice(msg);
-				setStatusMode('notice');
-				initializing = false;
-			};
-
-			if (!Engine.isWebGLAvailable()) {
-				displayFailureNotice('WebGL not available');
-			} else {
-				setStatusMode('indeterminate');
-				engine.startGame({
-					'onProgress': function (current, total) {
-						if (total > 0) {
-							statusProgressInner.style.width = current/total * 100 + '%';
-							setStatusMode('progress');
-							if (current === total) {
-								// wait for progress bar animation
-								setTimeout(() => {
-									setStatusMode('indeterminate');
-								}, 500);
-							}
-						} else {
-							setStatusMode('indeterminate');
-						}
-					},
-				}).then(() => {
-					setStatusMode('hidden');
-					initializing = false;
-				}, displayFailureNotice);
-			}
-		})();
-	//]]></script>
 </body>
 </html>
 
